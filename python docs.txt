@@ -1,0 +1,5 @@
+python -m venv venv
+pip list  - listar todas as bibliotecas do ambiente 
+pip freeze > requirements.txt
+pip install -r requirements.txt
+python -m app.main
