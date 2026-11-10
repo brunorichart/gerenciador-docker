@@ -1,5 +1,7 @@
 
 import shutil
+import re
+import shlex
 import tarfile
 import tempfile
 from io import BytesIO
@@ -8,6 +10,30 @@ from pathlib import Path, PurePosixPath
 from app.core.docker_client import DockerClient
 from docker.errors import NotFound
 from docker.types import Mount
+
+
+PACKAGE_MAP = {
+    "apt": {
+        "ping": "iputils-ping", "vim": "vim", "curl": "curl",
+        "ssh-client": "openssh-client", "ssh-server": "openssh-server",
+        "wget": "wget", "git": "git", "process-tools": "procps", "dns-tools": "dnsutils",
+    },
+    "apk": {
+        "ping": "iputils", "vim": "vim", "curl": "curl",
+        "ssh-client": "openssh-client", "ssh-server": "openssh-server",
+        "wget": "wget", "git": "git", "process-tools": "procps", "dns-tools": "bind-tools",
+    },
+    "dnf": {
+        "ping": "iputils", "vim": "vim-enhanced", "curl": "curl",
+        "ssh-client": "openssh-clients", "ssh-server": "openssh-server",
+        "wget": "wget", "git": "git", "process-tools": "procps-ng", "dns-tools": "bind-utils",
+    },
+    "yum": {
+        "ping": "iputils", "vim": "vim-enhanced", "curl": "curl",
+        "ssh-client": "openssh-clients", "ssh-server": "openssh-server",
+        "wget": "wget", "git": "git", "process-tools": "procps-ng", "dns-tools": "bind-utils",
+    },
+}
 
 
 def mapear_portas_publicadas(ports):
@@ -132,7 +158,10 @@ class ContainerService:
         if data.shell == "cmd.exe":
             command = [data.shell, "/S", "/C", data.command]
         else:
-            command = [data.shell, "-lc", data.command]
+            shell_command = data.command
+            if self._is_ping_command(shell_command):
+                shell_command = self._limitar_ping(shell_command)
+            command = [data.shell, "-lc", shell_command]
 
         result = container.exec_run(command, demux=True)
         stdout, stderr = result.output or (None, None)
@@ -142,6 +171,78 @@ class ContainerService:
             "exit_code": result.exit_code,
             "output": output.decode("utf-8", errors="replace")[-65536:]
         }
+
+    @staticmethod
+    def _is_ping_command(command):
+
+        match = re.match(r"^\s*(?:/[\w./-]+/)?ping(?:\s|$)", command)
+        return bool(match)
+
+    @staticmethod
+    def _limitar_ping(command):
+
+        parts = shlex.split(command)
+        if not parts:
+            return command
+
+        limited_parts = [parts[0]]
+        index = 1
+        while index < len(parts):
+            part = parts[index]
+            if part == "-c":
+                index += 2
+                continue
+            if part.startswith("-c") and part[2:].isdigit():
+                index += 1
+                continue
+            if part in {"-w", "-W"}:
+                index += 2
+                continue
+            if (part.startswith("-w") or part.startswith("-W")) and part[2:].isdigit():
+                index += 1
+                continue
+            limited_parts.append(part)
+            index += 1
+
+        limited_parts[0:1] = [parts[0], "-c", "4", "-W", "2", "-w", "10"]
+        return shlex.join(limited_parts)
+
+    def instalar_ferramentas(self, container_id, tools):
+
+        container = self.client.containers.get(container_id)
+        script = self._build_package_install_script(tools)
+        result = container.exec_run(
+            ["/bin/sh", "-lc", script],
+            user="0",
+            demux=True
+        )
+        stdout, stderr = result.output or (None, None)
+        output = b"".join(part for part in (stdout, stderr) if part)
+        return {
+            "exit_code": result.exit_code,
+            "output": output.decode("utf-8", errors="replace")[-65536:]
+        }
+
+    @staticmethod
+    def _build_package_install_script(tools):
+
+        tool_names = list(dict.fromkeys(tools))
+        manager_branches = []
+        for manager, package_map in PACKAGE_MAP.items():
+            packages = sorted({package_map[tool] for tool in tool_names})
+            package_list = shlex.join(packages)
+            if manager == "apt":
+                install = f"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends {package_list}"
+            elif manager == "apk":
+                install = f"apk add --no-cache {package_list}"
+            else:
+                install = f"{manager} install -y {package_list}"
+            keyword = "if" if not manager_branches else "elif"
+            detector = "apt-get" if manager == "apt" else manager
+            manager_branches.append(f"{keyword} command -v {detector} >/dev/null 2>&1; then\n    {install}")
+        script = "\n".join(manager_branches)
+        script += "\nelse\n    printf '%s\\n' 'Nenhum gerenciador de pacotes compatível encontrado.' >&2\n    exit 127\nfi"
+        return script
 
     def iniciar(self, container_id):
 

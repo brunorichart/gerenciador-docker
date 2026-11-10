@@ -5,6 +5,7 @@ from app.routes import containers
 from app.routes import image
 from app.routes import volume
 from app.routes import networks
+from app.routes import machine
 
 
 app = FastAPI(
@@ -19,6 +20,7 @@ app.include_router(containers.router, prefix="/api")
 app.include_router(image.router, prefix="/api")
 app.include_router(volume.router, prefix="/api")
 app.include_router(networks.router, prefix="/api")
+app.include_router(machine.router, prefix="/api")
 
 
 @app.get("/", tags=["Home"])

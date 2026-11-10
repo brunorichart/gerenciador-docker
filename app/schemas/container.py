@@ -18,6 +18,21 @@ class ContainerCommand(BaseModel):
     shell: Literal["/bin/sh", "/bin/bash", "cmd.exe"] = "/bin/sh"
 
 
+class PackageInstall(BaseModel):
+
+    tools: list[Literal[
+        "ping",
+        "vim",
+        "curl",
+        "ssh-client",
+        "ssh-server",
+        "wget",
+        "git",
+        "process-tools",
+        "dns-tools"
+    ]] = Field(min_length=1, max_length=9)
+
+
 class ContainerCreate(BaseModel):
 
     image: str = Field(

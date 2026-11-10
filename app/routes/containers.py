@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Query
 from docker.errors import NotFound, APIError, DockerException
 
 from app.services.container_service import ContainerService
-from app.schemas.container import ContainerCommand, ContainerCreate
+from app.schemas.container import ContainerCommand, ContainerCreate, PackageInstall
 
 router = APIRouter(
     prefix="/containers",
@@ -87,6 +87,13 @@ def executar_comando(container_id: str, data: ContainerCommand):
 
     service = get_service()
     return execute(lambda: service.executar(container_id, data))
+
+
+@router.post("/{container_id}/packages")
+def instalar_ferramentas(container_id: str, data: PackageInstall):
+
+    service = get_service()
+    return execute(lambda: service.instalar_ferramentas(container_id, data.tools))
 
 
 @router.delete("/{container_id}")
