@@ -1,6 +1,21 @@
 
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
+
+
+class VolumeMount(BaseModel):
+
+    kind: Literal["volume", "bind"] = "volume"
+    source: str = Field(min_length=1, description="Nome do volume ou pasta no computador")
+    target: str = Field(min_length=1, pattern=r"^/", description="Pasta de destino dentro do container")
+    read_only: bool = False
+    copy_initial_data: bool = False
+
+
+class ContainerCommand(BaseModel):
+
+    command: str = Field(min_length=1, max_length=4096)
+    shell: Literal["/bin/sh", "/bin/bash", "cmd.exe"] = "/bin/sh"
 
 
 class ContainerCreate(BaseModel):
@@ -18,6 +33,8 @@ class ContainerCreate(BaseModel):
     ports: Optional[dict[str, int]] = None
 
     environment: Optional[dict[str, str]] = None
+
+    volume: Optional[VolumeMount] = None
 
     detach: bool = True
 

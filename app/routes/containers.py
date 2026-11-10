@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Query
 from docker.errors import NotFound, APIError, DockerException
 
 from app.services.container_service import ContainerService
-from app.schemas.container import ContainerCreate
+from app.schemas.container import ContainerCommand, ContainerCreate
 
 router = APIRouter(
     prefix="/containers",
@@ -21,6 +21,8 @@ def get_service():
 def execute(operation):
     try:
         return operation()
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
     except NotFound:
         raise HTTPException(
             status_code=404,
@@ -78,6 +80,13 @@ def reiniciar_container(container_id: str):
 
     service = get_service()
     return execute(lambda: service.reiniciar(container_id))
+
+
+@router.post("/{container_id}/exec")
+def executar_comando(container_id: str, data: ContainerCommand):
+
+    service = get_service()
+    return execute(lambda: service.executar(container_id, data))
 
 
 @router.delete("/{container_id}")
